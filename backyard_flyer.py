@@ -61,11 +61,11 @@ class BackyardFlyer(Drone):
             print(self.local_position)
             cur_pos = self.local_position
             cur_pos[2] *= -1
-            # TODO: distance caculation + comparison (7.25) is arbitrary, better way to compare point accuracy in 3d space?
-            dist = abs(distance(self.target_position - self.local_position))
+            # TODO: is there a better way to compare point accuracy in 3d space?
+            dist = abs(distance(self.target_position - cur_pos))
             print("dist: {}".format(dist))
-            # if it's in the area and moving slow
-            if abs(dist) < 7.25 and self.local_velocity[0] < 0.5 and self.local_velocity[1] < 0.5:
+            # if it's in the area (<.25m away) and moving slow
+            if dist < 0.25 and self.local_velocity[0] < 0.5 and self.local_velocity[1] < 0.5:
                 self.waypoint_transition()
 
     def velocity_callback(self):
