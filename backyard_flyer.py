@@ -18,8 +18,6 @@ class States(Enum):
     LANDING = 4
     DISARMING = 5
 
-    HOVERED = 10
-
 class BackyardFlyer(Drone):
 
     def __init__(self, connection):
@@ -31,9 +29,7 @@ class BackyardFlyer(Drone):
 
         # initial state
         self.flight_state = States.MANUAL
-        self.next_state = None # placeholder for wait states (hover, etc.)
 
-        # TODO: Register all your callbacks here
         self.register_callback(MsgID.LOCAL_POSITION, self.local_position_callback)
         self.register_callback(MsgID.LOCAL_VELOCITY, self.velocity_callback)
         self.register_callback(MsgID.STATE, self.state_callback)
@@ -54,58 +50,53 @@ class BackyardFlyer(Drone):
 
                 # start pathing
                 self.all_waypoints = self.calculate_box()
-                self.waypoint_transition()
+
+                # see if there is a path to take
+                if len(self.all_waypoints) > 0:
+                    self.waypoint_transition()
+                else:
+                    self.landing_transition()
         
         elif self.flight_state == States.WAYPOINT:
             print(self.target_position)
             print(self.local_position)
             cur_pos = self.local_position
             cur_pos[2] *= -1
-            # TODO: is there a better way to compare point accuracy in 3d space?
+
             dist = abs(distance(self.target_position - cur_pos))
             print("dist: {}".format(dist))
-            # if it's in the area (<.25m away) and moving slow
-            if dist < 0.25 and self.local_velocity[0] < 0.5 and self.local_velocity[1] < 0.5:
-                self.waypoint_transition()
+            # if it's in the area (within .5 meters) and moving slow horizontally
+            if dist < 0.5 and self.local_velocity[0] < 0.1 and self.local_velocity[1] < 0.1:
+                if len(self.all_waypoints) > 0:
+                    self.waypoint_transition()
+                else:
+                    self.landing_transition()
 
     def velocity_callback(self):
         """
-        TODO: Implement this method
-
         This triggers when `MsgID.LOCAL_VELOCITY` is received and self.local_velocity contains new data
         """
         if self.flight_state == States.LANDING:
-            gps_alt = self.global_position[2]
             imu_alt = -1.0 * self.local_position[2]
-            if (abs(gps_alt - self.global_home[2]) < 0.1 and imu_alt < 0.1):
+            if (abs(self.global_position[2] - self.global_home[2]) < 0.1 and
+                imu_alt < 0.1):
                 self.disarming_transition()
 
     def state_callback(self):
         """
-        TODO: Implement this method
-
         This triggers when `MsgID.STATE` is received and self.armed and self.guided contain new data
         """
         if not self.in_mission: return
-
         
         if self.flight_state == States.MANUAL:
             self.arming_transition()
-        elif self.flight_state == States.ARMING:
+        elif self.flight_state == States.ARMING and self.armed:
             self.takeoff_transition()
-
-        # allow for hovering between wayponts
-        # if self.flight_state == States.HOVERED:
-        #     self.resume_next_state()
-
-        if self.flight_state == States.DISARMING:
+        if self.flight_state == States.DISARMING and not self.armed:
             self.manual_transition()
 
     def calculate_box(self):
-        """Returns a list of local waypoints to fly a box 
-        
-        1. Return a list waypoints to fly a box
-        """
+        """Returns a list of local waypoints to fly a box"""
         box_length = 10
         cn = self.local_position[0]
         ce = self.local_position[1]
@@ -118,7 +109,7 @@ class BackyardFlyer(Drone):
         ]
 
     def arming_transition(self):
-        """TODO: Fill out this method
+        """
         
         1. Take control of the drone
         2. Pass an arming command
@@ -161,52 +152,37 @@ class BackyardFlyer(Drone):
         """
         print("waypoint transition")
 
-        if len(self.all_waypoints) > 0:
-            # 1. Get next waypoint
-            waypoint = self.all_waypoints.pop(0)
-
-            print(waypoint)
-
-            # 2. Set target position
-            self.target_position = waypoint
-
-            # 3. Start moving there
-            self.cmd_position(*waypoint, 0)
-
-            # 3. Transition to WAYPOINT state
-            self.flight_state = States.WAYPOINT
-        else:
+        if len(self.all_waypoints) <= 0:
             self.landing_transition()
+            return
+        
+        # 1. Get next waypoint
+        wp = self.all_waypoints.pop(0)
+
+        # 2. Set target position
+        self.target_position = wp
+
+        # 3. Start moving there
+        self.cmd_position(wp[0], wp[1], wp[2], 0)
+
+        # 3. Transition to WAYPOINT state
+        self.flight_state = States.WAYPOINT
     
     def landing_transition(self):
-        """TODO: Fill out this method
+        """
         
         1. Command the drone to land
         2. Transition to the LANDING state
         """
         print("landing transition")
-        # set target altitude
-        # target_altitude = 0
-
-        # # set target position
-        # self.target_position[2] = 0
-
-        # # move to target altitude
-        # self.takeoff(target_altitude)
-
         # just start descending
         self.land()
 
         # change state
         self.flight_state = States.LANDING
-    
-    def resume_next_state(self):
-        """Transitions from hovering to the next state
-        """
-        pass
 
     def disarming_transition(self):
-        """TODO: Fill out this method
+        """
         
         1. Command the drone to disarm
         2. Transition to the DISARMING state
