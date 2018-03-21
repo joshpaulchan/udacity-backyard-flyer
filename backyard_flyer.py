@@ -43,9 +43,8 @@ class BackyardFlyer(Drone):
 
         # if in flight state
         if self.flight_state == States.TAKEOFF:
-            tgt_alt = -1.0 * self.target_position[2]
             # flexible comparison,
-            if tgt_alt > 0.90 * self.local_position[2]:
+            if -1.0 * self.local_position[2] > 0.90 * self.target_position[2]:
                 # self.landing_transition()
 
                 # start pathing
